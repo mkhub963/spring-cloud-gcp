@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: oracle-pvc
+  labels:
+    app: oracle
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  # For Azure Kubernetes Service (AKS), use:
+  storageClassName: managed-premium
+  # For Google Kubernetes Engine (GKE), use:
+  # storageClassName: premium-rwo
+  # For other Kubernetes clusters, adjust accordingly

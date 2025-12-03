@@ -1,0 +1,58 @@
+# Oracle Database Configuration for Spring Boot
+# Copy this file to application.properties and update values
+
+# Oracle Database Connection (for Oracle XE)
+spring.datasource.url=jdbc:oracle:thin:@oracle-db-service:1521/XE
+spring.datasource.username=appuser
+spring.datasource.password=${ORACLE_PASSWORD}
+spring.datasource.driver-class-name=oracle.jdbc.OracleDriver
+
+# For Oracle Enterprise Edition with Pluggable Database
+# spring.datasource.url=jdbc:oracle:thin:@oracle-db-service:1521/ORCLPDB1
+
+# HikariCP Connection Pool Settings
+spring.datasource.hikari.maximum-pool-size=10
+spring.datasource.hikari.minimum-idle=2
+spring.datasource.hikari.connection-timeout=30000
+spring.datasource.hikari.idle-timeout=600000
+spring.datasource.hikari.max-lifetime=1800000
+
+# JPA/Hibernate Configuration
+spring.jpa.database-platform=org.hibernate.dialect.Oracle12cDialect
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=false
+spring.jpa.properties.hibernate.format_sql=true
+spring.jpa.properties.hibernate.use_sql_comments=true
+
+# Oracle-specific JPA properties
+spring.jpa.properties.hibernate.jdbc.batch_size=20
+spring.jpa.properties.hibernate.order_inserts=true
+spring.jpa.properties.hibernate.order_updates=true
+spring.jpa.properties.hibernate.jdbc.batch_versioned_data=true
+
+# Logging
+logging.level.org.hibernate.SQL=DEBUG
+logging.level.org.hibernate.type.descriptor.sql.BasicBinder=TRACE
+logging.level.com.zaxxer.hikari=DEBUG
+
+# Application Settings
+server.port=8080
+spring.application.name=spring-boot-oracle-app
+
+# Actuator Configuration
+management.endpoints.web.exposure.include=health,info,metrics,prometheus
+management.endpoint.health.show-details=always
+management.health.livenessState.enabled=true
+management.health.readinessState.enabled=true
+
+# Optional: Oracle UCP (Universal Connection Pool) Configuration
+# If using UCP instead of HikariCP, uncomment and configure:
+# spring.datasource.type=oracle.ucp.jdbc.PoolDataSource
+# spring.datasource.oracleucp.initial-pool-size=5
+# spring.datasource.oracleucp.min-pool-size=2
+# spring.datasource.oracleucp.max-pool-size=10
+# spring.datasource.oracleucp.connection-wait-timeout=30
+
+# Optional: Oracle RAC Configuration (Enterprise Edition)
+# For Oracle RAC, use SCAN listener:
+# spring.datasource.url=jdbc:oracle:thin:@//scan-address:1521/service_name
