@@ -1,3 +1,10 @@
+# IMPORTANT SECURITY NOTE:
+# This ConfigMap contains SQL scripts with placeholder passwords.
+# In production:
+# 1. Replace 'YourSecurePassword' with references to Kubernetes Secrets
+# 2. Use environment variable substitution in init scripts
+# 3. Never commit actual passwords to version control
+# 4. Consider using external secret management systems (e.g., Azure Key Vault, HashiCorp Vault)
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -10,7 +17,8 @@ data:
     ALTER SESSION SET CONTAINER=ORCLPDB1;
     
     -- Create user
-    CREATE USER appuser IDENTIFIED BY "AppPassword123";
+    -- Note: Replace 'YourSecurePassword' with actual password from Secret
+    CREATE USER appuser IDENTIFIED BY "YourSecurePassword";
     
     -- Grant privileges
     GRANT CONNECT, RESOURCE TO appuser;
@@ -28,7 +36,8 @@ data:
     ALTER SESSION SET CONTAINER=ORCLPDB1;
     
     -- Connect as application user
-    CONNECT appuser/AppPassword123@//localhost:1521/ORCLPDB1;
+    -- Note: Replace 'YourSecurePassword' with actual password from Secret
+    CONNECT appuser/YourSecurePassword@//localhost:1521/ORCLPDB1;
     
     -- Create tables
     CREATE TABLE users (
@@ -69,7 +78,8 @@ data:
   03-create-procedures.sql: |
     -- Create stored procedures
     ALTER SESSION SET CONTAINER=ORCLPDB1;
-    CONNECT appuser/AppPassword123@//localhost:1521/ORCLPDB1;
+    -- Note: Replace 'YourSecurePassword' with actual password from Secret
+    CONNECT appuser/YourSecurePassword@//localhost:1521/ORCLPDB1;
     
     -- Procedure to update user's updated_date on modification
     CREATE OR REPLACE TRIGGER trg_users_update

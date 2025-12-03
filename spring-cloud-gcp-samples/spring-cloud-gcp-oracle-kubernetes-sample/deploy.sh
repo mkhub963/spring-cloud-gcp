@@ -146,8 +146,11 @@ show_connection_info() {
     echo "Connection string from within cluster:"
     echo "  jdbc:oracle:thin:@oracle-db-service:1521/XE"
     echo ""
-    echo "To connect with sqlplus:"
-    echo "  kubectl exec -it -n $namespace \$(kubectl get pod -n $namespace -l app=oracle -o jsonpath='{.items[0].metadata.name}') -- sqlplus system/<password>@localhost:1521/XE"
+    echo "To connect with sqlplus (using environment variable for security):"
+    echo "  kubectl exec -it -n $namespace \$(kubectl get pod -n $namespace -l app=oracle -o jsonpath='{.items[0].metadata.name}') -- sqlplus system/\${ORACLE_PASSWORD}@localhost:1521/XE"
+    echo ""
+    echo "Or for interactive password prompt:"
+    echo "  kubectl exec -it -n $namespace \$(kubectl get pod -n $namespace -l app=oracle -o jsonpath='{.items[0].metadata.name}') -- sqlplus system@localhost:1521/XE"
 }
 
 # Main script

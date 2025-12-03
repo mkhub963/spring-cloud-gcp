@@ -60,7 +60,11 @@ kubectl logs <oracle-pod-name>
 
 From within the cluster:
 ```bash
-kubectl exec -it <oracle-pod-name> -- sqlplus system/YourStrongPassword123@localhost:1521/XE
+# Using environment variable (recommended)
+kubectl exec -it <oracle-pod-name> -- sqlplus system/${ORACLE_PASSWORD}@localhost:1521/XE
+
+# Or with password prompt for security
+kubectl exec -it <oracle-pod-name> -- sqlplus system@localhost:1521/XE
 ```
 
 ## Files in This Sample
