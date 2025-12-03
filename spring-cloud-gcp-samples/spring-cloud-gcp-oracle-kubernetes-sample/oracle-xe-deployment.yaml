@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oracle-xe
+  labels:
+    app: oracle
+    edition: xe
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oracle
+      edition: xe
+  template:
+    metadata:
+      labels:
+        app: oracle
+        edition: xe
+    spec:
+      imagePullSecrets:
+        - name: oracle-registry
+      containers:
+      - name: oracle-xe
+        image: container-registry.oracle.com/database/express:21.3.0-xe
+        ports:
+        - containerPort: 1521
+          name: oracle-listener
+        - containerPort: 5500
+          name: oracle-em
+        env:
+        - name: ORACLE_PWD
+          valueFrom:
+            secretKeyRef:
+              name: oracle-secrets
+              key: oracle-password
+        - name: ORACLE_CHARACTERSET
+          value: "AL32UTF8"
+        volumeMounts:
+        - name: oracle-storage
+          mountPath: /opt/oracle/oradata
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - |
+              echo "SELECT 1 FROM DUAL;" | sqlplus -s system/${ORACLE_PWD}@//localhost:1521/XE | grep -q "^1"
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - |
+              echo "SELECT 1 FROM DUAL;" | sqlplus -s system/${ORACLE_PWD}@//localhost:1521/XE | grep -q "^1"
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      volumes:
+      - name: oracle-storage
+        persistentVolumeClaim:
+          claimName: oracle-pvc

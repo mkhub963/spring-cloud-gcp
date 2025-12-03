@@ -1,0 +1,39 @@
+# Example Dockerfile for customizing Oracle Database container
+# This is for advanced users who need to customize the Oracle image
+
+# Use official Oracle Database image as base
+FROM container-registry.oracle.com/database/express:21.3.0-xe
+
+# Switch to root to install additional packages
+USER root
+
+# Install additional utilities (optional)
+RUN microdnf install -y \
+    net-tools \
+    telnet \
+    vim \
+    && microdnf clean all
+
+# Copy custom initialization scripts
+# These scripts will run on first startup
+COPY scripts/*.sql /opt/oracle/scripts/setup/
+
+# Copy custom configuration files
+COPY config/tnsnames.ora /opt/oracle/oradata/dbconfig/
+
+# Set custom environment variables
+ENV ORACLE_CHARACTERSET=AL32UTF8
+ENV ORACLE_EDITION=express
+
+# Expose additional ports if needed
+EXPOSE 1521 5500
+
+# Switch back to oracle user
+USER oracle
+
+# Optional: Add health check
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+    CMD echo "SELECT 1 FROM DUAL;" | sqlplus -s system/${ORACLE_PWD}@//localhost:1521/XE || exit 1
+
+# Use the default entrypoint from base image
+# ENTRYPOINT is already set in base image

@@ -1,0 +1,763 @@
+[#oracle-kubernetes]
+== Oracle Database on Kubernetes
+
+This guide provides instructions for deploying Oracle Database in Kubernetes environments, including Azure Kubernetes Service (AKS), Google Kubernetes Engine (GKE), and other Kubernetes platforms.
+
+=== Overview
+
+Running Oracle Database in Kubernetes containers allows you to leverage container orchestration benefits such as automated deployment, scaling, and management. This guide covers the essential steps and best practices for containerizing and deploying Oracle Database.
+
+=== Prerequisites
+
+Before deploying Oracle Database in Kubernetes, ensure you have:
+
+* A running Kubernetes cluster (AKS, GKE, or other Kubernetes platform)
+* `kubectl` command-line tool installed and configured
+* Sufficient cluster resources (CPU, memory, and storage)
+* Oracle Database container image (from Oracle Container Registry)
+* Valid Oracle Database license
+* Docker or container runtime for building custom images (if needed)
+
+=== Oracle Container Registry
+
+Oracle provides official container images through the Oracle Container Registry at https://container-registry.oracle.com/.
+
+To pull images from Oracle Container Registry:
+
+1. Create an Oracle account at https://www.oracle.com/
+2. Accept the Oracle Standard Terms and Restrictions for the Database images
+3. Log in to the Oracle Container Registry:
+
+[source,bash]
+----
+docker login container-registry.oracle.com
+----
+
+Available Oracle Database editions:
+* Oracle Database Enterprise Edition
+* Oracle Database Standard Edition
+* Oracle Database Express Edition (XE)
+
+=== Creating Kubernetes Secret for Oracle Container Registry
+
+Create a Kubernetes secret to pull images from Oracle Container Registry:
+
+[source,bash]
+----
+kubectl create secret docker-registry oracle-registry \
+  --docker-server=container-registry.oracle.com \
+  --docker-username=your-oracle-username \
+  --docker-password=your-oracle-password \
+  --docker-email=your-email@example.com
+----
+
+=== Persistent Storage Configuration
+
+Oracle Database requires persistent storage to maintain data across pod restarts. Create a PersistentVolumeClaim:
+
+[source,yaml]
+----
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: oracle-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: managed-premium  # For AKS, use appropriate storage class
+----
+
+For Azure Kubernetes Service (AKS), common storage classes include:
+* `managed-premium` - Azure Premium SSD
+* `managed` - Azure Standard SSD
+* `azurefile` - Azure File storage
+
+For Google Kubernetes Engine (GKE):
+* `standard` - Standard persistent disk
+* `standard-rwo` - Standard balanced persistent disk
+* `premium-rwo` - Premium SSD persistent disk
+
+=== Oracle Database Deployment
+
+==== Basic Deployment Configuration
+
+Create a Kubernetes Deployment for Oracle Database:
+
+[source,yaml]
+----
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oracle-db
+  labels:
+    app: oracle
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oracle
+  template:
+    metadata:
+      labels:
+        app: oracle
+    spec:
+      imagePullSecrets:
+        - name: oracle-registry
+      containers:
+      - name: oracle-database
+        image: container-registry.oracle.com/database/enterprise:19.3.0.0
+        ports:
+        - containerPort: 1521
+          name: oracle
+        - containerPort: 5500
+          name: oracle-em
+        env:
+        - name: ORACLE_SID
+          value: "ORCLCDB"
+        - name: ORACLE_PDB
+          value: "ORCLPDB1"
+        - name: ORACLE_PWD
+          valueFrom:
+            secretKeyRef:
+              name: oracle-secrets
+              key: oracle-password
+        - name: ORACLE_CHARACTERSET
+          value: "AL32UTF8"
+        volumeMounts:
+        - name: oracle-storage
+          mountPath: /opt/oracle/oradata
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "2"
+          limits:
+            memory: "8Gi"
+            cpu: "4"
+      volumes:
+      - name: oracle-storage
+        persistentVolumeClaim:
+          claimName: oracle-pvc
+----
+
+==== Creating Oracle Secrets
+
+Store sensitive information like passwords in Kubernetes Secrets:
+
+[source,bash]
+----
+kubectl create secret generic oracle-secrets \
+  --from-literal=oracle-password=YourStrongPassword123
+----
+
+==== Service Configuration
+
+Expose Oracle Database within the cluster:
+
+[source,yaml]
+----
+apiVersion: v1
+kind: Service
+metadata:
+  name: oracle-db-service
+spec:
+  type: ClusterIP
+  selector:
+    app: oracle
+  ports:
+  - name: oracle-port
+    protocol: TCP
+    port: 1521
+    targetPort: 1521
+  - name: oracle-em-port
+    protocol: TCP
+    port: 5500
+    targetPort: 5500
+----
+
+For external access (use with caution in production):
+
+[source,yaml]
+----
+apiVersion: v1
+kind: Service
+metadata:
+  name: oracle-db-external
+spec:
+  type: LoadBalancer
+  selector:
+    app: oracle
+  ports:
+  - name: oracle-port
+    protocol: TCP
+    port: 1521
+    targetPort: 1521
+----
+
+=== Oracle Database Express Edition (XE)
+
+For development and testing, Oracle Database XE is a lighter alternative:
+
+[source,yaml]
+----
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oracle-xe
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oracle-xe
+  template:
+    metadata:
+      labels:
+        app: oracle-xe
+    spec:
+      imagePullSecrets:
+        - name: oracle-registry
+      containers:
+      - name: oracle-xe
+        image: container-registry.oracle.com/database/express:21.3.0-xe
+        ports:
+        - containerPort: 1521
+        env:
+        - name: ORACLE_PWD
+          valueFrom:
+            secretKeyRef:
+              name: oracle-secrets
+              key: oracle-password
+        volumeMounts:
+        - name: oracle-xe-storage
+          mountPath: /opt/oracle/oradata
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+      volumes:
+      - name: oracle-xe-storage
+        persistentVolumeClaim:
+          claimName: oracle-xe-pvc
+----
+
+=== StatefulSet for Production
+
+For production deployments, use StatefulSet for stable network identities and persistent storage:
+
+[source,yaml]
+----
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: oracle-db
+spec:
+  serviceName: oracle-db-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oracle
+  template:
+    metadata:
+      labels:
+        app: oracle
+    spec:
+      imagePullSecrets:
+        - name: oracle-registry
+      containers:
+      - name: oracle-database
+        image: container-registry.oracle.com/database/enterprise:19.3.0.0
+        ports:
+        - containerPort: 1521
+          name: oracle
+        env:
+        - name: ORACLE_SID
+          value: "ORCLCDB"
+        - name: ORACLE_PDB
+          value: "ORCLPDB1"
+        - name: ORACLE_PWD
+          valueFrom:
+            secretKeyRef:
+              name: oracle-secrets
+              key: oracle-password
+        volumeMounts:
+        - name: oracle-storage
+          mountPath: /opt/oracle/oradata
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "2"
+          limits:
+            memory: "8Gi"
+            cpu: "4"
+  volumeClaimTemplates:
+  - metadata:
+      name: oracle-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: "managed-premium"
+      resources:
+        requests:
+          storage: 50Gi
+----
+
+=== ConfigMap for Initialization Scripts
+
+Use ConfigMaps to provide initialization scripts:
+
+[source,yaml]
+----
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oracle-init-scripts
+data:
+  01-create-user.sql: |
+    -- Create application user
+    ALTER SESSION SET CONTAINER=ORCLPDB1;
+    CREATE USER appuser IDENTIFIED BY "AppPassword123";
+    GRANT CONNECT, RESOURCE TO appuser;
+    GRANT UNLIMITED TABLESPACE TO appuser;
+  02-create-tables.sql: |
+    -- Create application tables
+    ALTER SESSION SET CONTAINER=ORCLPDB1;
+    CREATE TABLE appuser.users (
+      id NUMBER PRIMARY KEY,
+      username VARCHAR2(100),
+      email VARCHAR2(100)
+    );
+----
+
+Mount the ConfigMap in your deployment:
+
+[source,yaml]
+----
+volumeMounts:
+- name: init-scripts
+  mountPath: /opt/oracle/scripts/setup
+volumes:
+- name: init-scripts
+  configMap:
+    name: oracle-init-scripts
+----
+
+=== Spring Boot Integration
+
+Configure your Spring Boot application to connect to Oracle Database in Kubernetes:
+
+==== Maven Dependency
+
+[source,xml]
+----
+<dependency>
+    <groupId>com.oracle.database.jdbc</groupId>
+    <artifactId>ojdbc8</artifactId>
+    <version>21.5.0.0</version>
+</dependency>
+----
+
+==== Application Properties
+
+[source,properties]
+----
+spring.datasource.url=jdbc:oracle:thin:@oracle-db-service:1521/ORCLPDB1
+spring.datasource.username=appuser
+spring.datasource.password=${ORACLE_PASSWORD}
+spring.datasource.driver-class-name=oracle.jdbc.OracleDriver
+
+# JPA Configuration
+spring.jpa.database-platform=org.hibernate.dialect.Oracle12cDialect
+spring.jpa.hibernate.ddl-auto=update
+----
+
+==== Using Kubernetes Secrets in Spring Boot
+
+Create a Kubernetes Secret for application database credentials:
+
+[source,bash]
+----
+kubectl create secret generic app-db-credentials \
+  --from-literal=oracle-password=AppPassword123
+----
+
+Reference the secret in your deployment:
+
+[source,yaml]
+----
+env:
+- name: ORACLE_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: app-db-credentials
+      key: oracle-password
+----
+
+=== Health Checks and Probes
+
+Configure liveness and readiness probes:
+
+[source,yaml]
+----
+livenessProbe:
+  exec:
+    command:
+    - /bin/sh
+    - -c
+    - |
+      echo "SELECT 1 FROM DUAL;" | sqlplus -s system/${ORACLE_PWD}@//localhost:1521/ORCLCDB | grep -q "^1"
+  initialDelaySeconds: 120
+  periodSeconds: 30
+  timeoutSeconds: 10
+  failureThreshold: 3
+
+readinessProbe:
+  exec:
+    command:
+    - /bin/sh
+    - -c
+    - |
+      echo "SELECT 1 FROM DUAL;" | sqlplus -s system/${ORACLE_PWD}@//localhost:1521/ORCLCDB | grep -q "^1"
+  initialDelaySeconds: 60
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+----
+
+=== Resource Requirements
+
+Recommended resource allocations for different Oracle Database editions:
+
+|===
+| Edition | Minimum Memory | Recommended Memory | Minimum CPU | Recommended CPU | Storage
+
+| Oracle XE
+| 2Gi
+| 4Gi
+| 1
+| 2
+| 10-20Gi
+
+| Standard Edition
+| 4Gi
+| 8Gi
+| 2
+| 4
+| 50-100Gi
+
+| Enterprise Edition
+| 8Gi
+| 16Gi
+| 4
+| 8
+| 100-500Gi
+|===
+
+=== Best Practices
+
+==== Security
+
+* Always use Kubernetes Secrets for passwords and sensitive data
+* Never store credentials in plain text in YAML files
+* Use RBAC to control access to Oracle pods and secrets
+* Enable network policies to restrict database access
+* Use TLS/SSL for database connections in production
+* Regularly update Oracle Database images to get security patches
+
+==== Performance
+
+* Use SSD-backed storage (Premium Storage in AKS)
+* Allocate sufficient memory to avoid OOM kills
+* Configure appropriate CPU limits based on workload
+* Use anti-affinity rules for multi-instance deployments
+* Consider using Oracle RAC for high availability (Enterprise Edition)
+
+==== Backup and Recovery
+
+* Implement regular backup strategies using RMAN
+* Store backups in external storage (Azure Blob, Google Cloud Storage)
+* Use VolumeSnapshots for quick recovery
+* Test restore procedures regularly
+* Consider using Oracle Data Guard for disaster recovery
+
+==== Monitoring
+
+* Use Kubernetes metrics to monitor pod health
+* Configure Oracle Enterprise Manager (port 5500)
+* Integrate with monitoring solutions (Prometheus, Grafana)
+* Set up alerts for resource usage and database health
+* Monitor database logs through Kubernetes logging
+
+=== Deployment Commands
+
+Deploy all resources in order:
+
+[source,bash]
+----
+# Create namespace (optional)
+kubectl create namespace oracle-db
+
+# Create secrets
+kubectl create secret docker-registry oracle-registry \
+  --docker-server=container-registry.oracle.com \
+  --docker-username=your-oracle-username \
+  --docker-password=your-oracle-password \
+  --docker-email=your-email@example.com \
+  -n oracle-db
+
+kubectl create secret generic oracle-secrets \
+  --from-literal=oracle-password=YourStrongPassword123 \
+  -n oracle-db
+
+# Create PVC
+kubectl apply -f oracle-pvc.yaml -n oracle-db
+
+# Create ConfigMap (if using)
+kubectl apply -f oracle-configmap.yaml -n oracle-db
+
+# Deploy Oracle Database
+kubectl apply -f oracle-deployment.yaml -n oracle-db
+
+# Create Service
+kubectl apply -f oracle-service.yaml -n oracle-db
+
+# Check deployment status
+kubectl get pods -n oracle-db
+kubectl logs -f <oracle-pod-name> -n oracle-db
+----
+
+=== Troubleshooting
+
+==== Pod Not Starting
+
+Check pod status and events:
+[source,bash]
+----
+kubectl describe pod <oracle-pod-name>
+kubectl logs <oracle-pod-name>
+----
+
+Common issues:
+* Insufficient resources: Increase memory/CPU limits
+* Image pull errors: Verify registry credentials
+* Storage issues: Check PVC status and storage class
+
+==== Database Connection Issues
+
+Verify service and connectivity:
+[source,bash]
+----
+# Check service
+kubectl get svc oracle-db-service
+
+# Test connection from another pod
+kubectl run -it --rm debug --image=busybox --restart=Never -- \
+  telnet oracle-db-service 1521
+
+# Check database listener
+kubectl exec -it <oracle-pod-name> -- \
+  lsnrctl status
+----
+
+==== Performance Issues
+
+* Check resource utilization:
+[source,bash]
+----
+kubectl top pod <oracle-pod-name>
+----
+
+* Review Oracle Database AWR reports
+* Verify storage performance (IOPS, throughput)
+* Check for resource throttling in Kubernetes
+
+==== Data Persistence Issues
+
+* Verify PVC is bound:
+[source,bash]
+----
+kubectl get pvc
+----
+
+* Check volume mount permissions
+* Verify storage class supports ReadWriteOnce
+* Review pod logs for mount errors
+
+=== Azure AKS Specific Considerations
+
+==== Storage Classes in AKS
+
+AKS provides several storage options:
+
+* `managed-premium`: Azure Premium SSD (recommended for production)
+* `managed`: Azure Standard SSD
+* `azurefile`: Azure Files (supports ReadWriteMany)
+* `azurefile-premium`: Premium Azure Files
+
+==== AKS Node Pools
+
+For Oracle Database workloads in AKS:
+
+* Use Standard_D8s_v3 or larger VM sizes
+* Enable Premium SSD support
+* Consider dedicated node pools for database workloads
+* Use node selectors or taints/tolerations:
+
+[source,yaml]
+----
+nodeSelector:
+  workload: database
+tolerations:
+- key: "database"
+  operator: "Equal"
+  value: "oracle"
+  effect: "NoSchedule"
+----
+
+==== AKS Network Policies
+
+Configure network policies to secure database access:
+
+[source,yaml]
+----
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: oracle-db-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: oracle
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          access: oracle-db
+    ports:
+    - protocol: TCP
+      port: 1521
+----
+
+=== Complete Example
+
+Here's a complete example combining all components:
+
+[source,yaml]
+----
+# oracle-complete.yaml
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: oracle-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: managed-premium
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oracle-db-service
+spec:
+  type: ClusterIP
+  selector:
+    app: oracle
+  ports:
+  - name: oracle
+    port: 1521
+    targetPort: 1521
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: oracle-db
+spec:
+  serviceName: oracle-db-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oracle
+  template:
+    metadata:
+      labels:
+        app: oracle
+    spec:
+      imagePullSecrets:
+        - name: oracle-registry
+      containers:
+      - name: oracle
+        image: container-registry.oracle.com/database/express:21.3.0-xe
+        ports:
+        - containerPort: 1521
+          name: oracle
+        env:
+        - name: ORACLE_PWD
+          valueFrom:
+            secretKeyRef:
+              name: oracle-secrets
+              key: oracle-password
+        - name: ORACLE_CHARACTERSET
+          value: "AL32UTF8"
+        volumeMounts:
+        - name: oracle-storage
+          mountPath: /opt/oracle/oradata
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - echo "SELECT 1 FROM DUAL;" | sqlplus -s system/${ORACLE_PWD}@//localhost:1521/XE | grep -q "^1"
+          initialDelaySeconds: 120
+          periodSeconds: 30
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - echo "SELECT 1 FROM DUAL;" | sqlplus -s system/${ORACLE_PWD}@//localhost:1521/XE | grep -q "^1"
+          initialDelaySeconds: 60
+          periodSeconds: 10
+      volumes:
+      - name: oracle-storage
+        persistentVolumeClaim:
+          claimName: oracle-pvc
+----
+
+Deploy using:
+[source,bash]
+----
+kubectl apply -f oracle-complete.yaml
+----
+
+=== Additional Resources
+
+* https://www.oracle.com/database/technologies/oracle-database-container-images.html[Oracle Database Container Images]
+* https://github.com/oracle/docker-images/tree/main/OracleDatabase[Oracle Database Docker Images Repository]
+* https://docs.oracle.com/en/database/oracle/oracle-database/21/xeinl/index.html[Oracle Database Express Edition Documentation]
+* https://kubernetes.io/docs/concepts/storage/persistent-volumes/[Kubernetes Persistent Volumes]
+* https://docs.microsoft.com/en-us/azure/aks/[Azure Kubernetes Service Documentation]
+* https://cloud.google.com/kubernetes-engine/docs[Google Kubernetes Engine Documentation]
+
+=== License Considerations
+
+* Oracle Database requires proper licensing for production use
+* Oracle XE is free for development and limited production use
+* Ensure compliance with Oracle licensing terms when running in containers
+* Contact Oracle sales for licensing in cloud/Kubernetes environments
+* Consider Oracle Cloud Infrastructure (OCI) for fully managed Oracle Database services
