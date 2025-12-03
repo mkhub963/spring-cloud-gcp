@@ -48,3 +48,6 @@ Uses https://micrometer.io/[Micrometer] to automatically generate trace IDs for 
 - link:spring-cloud-gcp-vision-api-sample[Spring Framework on Google Cloud Vision API Sample]:
 Provides an example of how to use Spring Framework on Google Cloud to improve the general usability of Google Cloud
 Client Libraries.
+
+- link:spring-cloud-gcp-oracle-kubernetes-sample[Oracle Database on Kubernetes Sample]:
+Provides comprehensive Kubernetes manifests and documentation for deploying Oracle Database in Kubernetes environments, including Azure Kubernetes Service (AKS) and Google Kubernetes Engine (GKE). Includes deployment configurations, Spring Boot integration examples, and best practices for running Oracle in containers.
